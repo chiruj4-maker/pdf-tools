@@ -7,6 +7,7 @@ import { useTaskHistory } from '@/hooks/use-task-history';
 import { useToast } from '@/hooks/use-toast';
 import { File, X, Check, FileImage } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 
 export function PdfToImageConverter() {
   const [file, setFile] = useState<File | null>(null);
