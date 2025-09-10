@@ -83,7 +83,7 @@ export function SmartTaskSuggester() {
                 <div>
                     <h3 className="font-semibold mb-2">Suggested Actions:</h3>
                     <div className="flex flex-wrap gap-2">
-                        {result.suggestions.map((action, index) => (
+                        {result.suggestedActions.map((action, index) => (
                             <Badge key={index} variant="secondary" className="text-base px-3 py-1 bg-primary/10 text-primary-foreground border-primary/20">
                                 {action}
                             </Badge>
