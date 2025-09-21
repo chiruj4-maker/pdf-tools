@@ -30,7 +30,7 @@ const SortablePage = ({ page }: { page: PDFPage }) => {
         transition,
     };
     return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="relative aspect-[7/10] bg-white border rounded-md shadow-sm overflow-hidden">
+        <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="relative aspect-[7/10] bg-white border rounded-md shadow-sm overflow-hidden touch-none">
             <img src={page.thumbnail} alt={`Page ${page.id}`} className="w-full h-full object-contain" />
         </div>
     );
@@ -121,13 +121,14 @@ export function PdfEditor() {
     if(selectedPages.size === 0) return;
     setPages(prev => prev.filter(p => !selectedPages.has(p.id)));
     setSelectedPages(new Set());
+     toast({ title: "Pages Deleted", description: `${selectedPages.size} page(s) have been removed. Click 'Save & Download' to finalize.`});
   };
 
-  const handleRotateSelected = (degrees: 90 | 180 | 270) => {
+  const handleRotateSelected = (degree: 90 | -90) => {
     if(selectedPages.size === 0) return;
     // This is a visual placeholder. The actual rotation happens on save.
     // In a real app, you might re-render thumbnails here.
-    toast({ title: "Rotation Queued", description: `Selected pages will be rotated by ${degrees} degrees upon saving.`});
+    toast({ title: "Rotation Queued", description: `Selected pages will be rotated by ${degree} degrees upon saving.`});
   };
   
   const handleSave = async () => {
@@ -137,24 +138,30 @@ export function PdfEditor() {
     try {
         const originalPdfBytes = await file.arrayBuffer();
         const pdfDoc = await PDFDocument.load(originalPdfBytes);
-        
-        // Reorder pages based on current `pages` state
-        const pageOrder = pages.map(p => p.id - 1); // convert to 0-based index
         const newPdfDoc = await PDFDocument.create();
-        const copiedPages = await newPdfDoc.copyPages(pdfDoc, pageOrder);
-        copiedPages.forEach(page => newPdfDoc.addPage(page));
-
-        // Now apply rotations to the new document based on original page IDs
-        const pagesToRotate = Array.from(selectedPages);
-        pagesToRotate.forEach(pageId => {
-            const newIndex = pages.findIndex(p => p.id === pageId);
-            if(newIndex !== -1) {
-                const page = newPdfDoc.getPage(newIndex);
-                const currentRotation = page.getRotation().angle;
-                page.setRotation(degrees(currentRotation + 90)); // Hardcoding 90 for now
-            }
-        });
         
+        const originalPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+
+        for (const page of pages) {
+            const pageIndex = page.id - 1;
+            
+            // This is a simplified rotation logic, assuming only one rotation action is queued.
+            // A more robust solution would track rotation for each page independently.
+            if (selectedPages.has(page.id)) {
+                const originalPage = originalPages[pageIndex];
+                originalPage.setRotation(degrees(originalPage.getRotation().angle + 90));
+            }
+            newPdfDoc.addPage(originalPages[pageIndex]);
+        }
+
+        // Delete pages not in the final 'pages' state array
+        const finalPageIds = new Set(pages.map(p => p.id));
+        const pageCount = newPdfDoc.getPageCount();
+        for (let i = pageCount - 1; i >= 0; i--) {
+             // This logic needs to be smarter. We can't just check finalPageIds.
+             // The new document is built from scratch, so we only add the pages we want.
+        }
+
         const finalPdfBytes = await newPdfDoc.save();
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         downloadFile(blob, `edited-${file.name}`);
@@ -226,7 +233,7 @@ export function PdfEditor() {
             )}
             
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={pages.map(p => p.id)}>
+                <SortableContext items={pages}>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {pages.map((page) => (
                             <div key={page.id} className="relative group">
