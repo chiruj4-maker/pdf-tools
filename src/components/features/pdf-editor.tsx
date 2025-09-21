@@ -1,8 +1,8 @@
 'use client';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { PDFDocument, degrees, PDFImage, rgb } from 'pdf-lib';
-import type { fabric } from 'fabric';
+import { PDFDocument, degrees, PDFImage, rgb, StandardFonts } from 'pdf-lib';
+import type { fabric as FabricType } from 'fabric';
 
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -12,7 +12,7 @@ import { FileDropzone } from '@/components/ui/file-dropzone';
 import { Button } from '@/components/ui/button';
 import { useTaskHistory } from '@/hooks/use-task-history';
 import { useToast } from '@/hooks/use-toast';
-import { File, X, Check, Loader2, Download, Trash2, RotateCcw, Save, FilePlus, ZoomIn, ZoomOut, Image as ImageIcon } from 'lucide-react';
+import { File, X, Check, Loader2, Download, Trash2, RotateCcw, Save, FilePlus, ZoomIn, ZoomOut, Image as ImageIcon, Type as TextIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { downloadFile } from '@/lib/file-utils';
 import { ScrollArea, ScrollBar } from '../ui/scroll-area';
@@ -53,8 +53,8 @@ export function PdfEditor() {
   
   // Fabric.js state
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
-  const fabricRef = useRef<typeof fabric | null>(null);
+  const fabricCanvasRef = useRef<FabricType.Canvas | null>(null);
+  const fabricRef = useRef<typeof FabricType | null>(null);
   const [isFabricReady, setIsFabricReady] = useState(false);
 
   const [zoom, setZoom] = useState(1);
@@ -128,17 +128,19 @@ export function PdfEditor() {
     tempCanvas.height = viewport.height;
     const tempContext = tempCanvas.getContext('2d');
 
-    await page.render({ canvasContext: tempContext!, viewport: viewport }).promise;
+    if (tempContext) {
+      await page.render({ canvasContext: tempContext, viewport: viewport }).promise;
     
-    const bgImage = new fabric.Image(tempCanvas, {
-        selectable: false,
-        evented: false,
-    });
-    
-    canvas.setBackgroundImage(bgImage, canvas.renderAll.bind(canvas), {
-        originX: 'left',
-        originY: 'top',
-    });
+      const bgImage = new fabric.Image(tempCanvas, {
+          selectable: false,
+          evented: false,
+      });
+      
+      canvas.setBackgroundImage(bgImage, canvas.renderAll.bind(canvas), {
+          originX: 'left',
+          originY: 'top',
+      });
+    }
 
   }, [pdfDocProxy, selectedPageIndex, pages, zoom]);
 
@@ -173,9 +175,11 @@ export function PdfEditor() {
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
-        await page.render({ canvasContext: context!, viewport: viewport }).promise;
-        const thumbnail = canvas.toDataURL();
-        newPages.push({ id: i, uniqueId: `page-${i}`, thumbnail, rotation: 0 });
+        if (context) {
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
+          const thumbnail = canvas.toDataURL();
+          newPages.push({ id: i, uniqueId: `page-${i}`, thumbnail, rotation: 0 });
+        }
       }
       setPages(newPages);
       if (newPages.length > 0) {
@@ -276,7 +280,29 @@ export function PdfEditor() {
           };
           reader.readAsDataURL(imageFile);
       }
-      e.target.value = '';
+      if (e.target) {
+        e.target.value = '';
+      }
+  }
+
+  const handleAddText = () => {
+    if (!fabricCanvasRef.current || !fabricRef.current) return;
+    const fabric = fabricRef.current;
+    const canvas = fabricCanvasRef.current;
+
+    const text = new fabric.IText('Your Text Here', {
+        left: canvas.getWidth() / 2,
+        top: canvas.getHeight() / 2,
+        originX: 'center',
+        originY: 'center',
+        fontSize: 24,
+        fill: 'black',
+    });
+
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+    toast({ title: "Text Added", description: "Click to edit the text. You can also move and resize it." });
   }
 
   const handleSave = async () => {
@@ -316,22 +342,35 @@ export function PdfEditor() {
                 const renderContext = new Promise<void>(resolve => {
                     tempCanvas.loadFromJSON(savedStateJSON, async () => {
                         const objects = tempCanvas.getObjects();
+                        const helveticaFont = await newPdfDoc.embedFont(StandardFonts.Helvetica);
+
                         for (const obj of objects) {
+                            const { scaleX = 1, scaleY = 1, left = 0, top = 0, angle = 0 } = obj;
+                            const width = obj.getScaledWidth();
+                            const height = obj.getScaledHeight();
+
                             if (obj.type === 'image' && obj instanceof fabric.Image) {
-                                const imageElement = obj.getElement();
+                                const imageElement = obj.getElement() as HTMLImageElement;
                                 const imageBytes = await fetch(imageElement.src).then(res => res.arrayBuffer());
                                 const isPng = imageElement.src.startsWith('data:image/png');
                                 const pdfImage = isPng ? await newPdfDoc.embedPng(imageBytes) : await newPdfDoc.embedJpg(imageBytes);
 
-                                const { scaleX = 1, scaleY = 1, left = 0, top = 0, angle = 0 } = obj;
-                                const width = obj.getScaledWidth();
-                                const height = obj.getScaledHeight();
-                                
                                 newPage.drawImage(pdfImage, {
                                     x: left,
                                     y: newPage.getHeight() - top - height,
                                     width: width,
                                     height: height,
+                                    rotate: degrees(-angle),
+                                });
+                            } else if (obj.type === 'i-text' && obj instanceof fabric.IText) {
+                                const text = obj.text || '';
+                                const fontSize = (obj.fontSize || 12) * (scaleY || 1);
+                                newPage.drawText(text, {
+                                    x: left,
+                                    y: newPage.getHeight() - top - fontSize,
+                                    font: helveticaFont,
+                                    size: fontSize,
+                                    color: rgb(0, 0, 0), // Simplification: assuming black text
                                     rotate: degrees(-angle),
                                 });
                             }
@@ -372,45 +411,45 @@ export function PdfEditor() {
     setSelectedPageId(null);
     setZoom(1);
     setPdfDocProxy(null);
-    fabricCanvasRef.current?.clear();
+    if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.clear();
+    }
     sessionStorage.clear();
   };
   
   const selectedPageData = useMemo(() => pages.find(p => p.uniqueId === selectedPageId), [pages, selectedPageId]);
 
-  useEffect(() => {
-    const handlePageChange = (oldPageId: string | null, newPageId: string | null) => {
-        if (fabricCanvasRef.current) {
-            // Save current canvas state
-            if (oldPageId) {
-                const oldPageData = pages.find(p => p.uniqueId === oldPageId);
-                if (oldPageData) {
-                    const json = fabricCanvasRef.current.toObject();
-                    sessionStorage.setItem(oldPageData.uniqueId, JSON.stringify(json));
-                }
-            }
-            // Load new canvas state
-            if (newPageId) {
-                const newPageData = pages.find(p => p.uniqueId === newPageId);
-                if (newPageData) {
-                    const savedStateJSON = sessionStorage.getItem(newPageData.uniqueId);
-                    fabricCanvasRef.current.clear(); // Clear before loading
-                    if (savedStateJSON) {
-                        fabricCanvasRef.current.loadFromJSON(savedStateJSON, () => {
-                            drawCanvas(); // Redraw background after loading objects
-                        });
-                    } else {
-                        drawCanvas(); // Just draw the new page background
-                    }
-                }
+  const handlePageSelect = useCallback((newPageId: string) => {
+    if (fabricCanvasRef.current && selectedPageId) {
+        // Save current canvas state
+        const oldPageData = pages.find(p => p.uniqueId === selectedPageId);
+        if (oldPageData) {
+            const json = fabricCanvasRef.current.toObject();
+            if (json.objects.length > 0) {
+              sessionStorage.setItem(oldPageData.uniqueId, JSON.stringify(json));
+            } else {
+              sessionStorage.removeItem(oldPageData.uniqueId);
             }
         }
-    };
-    handlePageChange(null, selectedPageId); // For initial load
+    }
+    
+    setSelectedPageId(newPageId);
 
-    return () => {
-        // This effect should re-run when selectedPageId changes,
-        // so we need a more robust way to track previous page
+    // Load new canvas state
+    if (fabricCanvasRef.current && newPageId) {
+        const newPageData = pages.find(p => p.uniqueId === newPageId);
+        if (newPageData) {
+            const savedStateJSON = sessionStorage.getItem(newPageData.uniqueId);
+            fabricCanvasRef.current.clear();
+            
+            drawCanvas().then(() => {
+                if (savedStateJSON && fabricCanvasRef.current) {
+                    fabricCanvasRef.current.loadFromJSON(savedStateJSON, () => {
+                      fabricCanvasRef.current?.renderAll();
+                    });
+                }
+            });
+        }
     }
   }, [selectedPageId, pages, drawCanvas]);
 
@@ -445,6 +484,9 @@ export function PdfEditor() {
                  <Button size="sm" onClick={handleAddImageClick} disabled={isProcessing || !selectedPageId || !isFabricReady}>
                     <ImageIcon className="mr-2"/> Insert Image
                 </Button>
+                <Button size="sm" onClick={handleAddText} disabled={isProcessing || !selectedPageId || !isFabricReady}>
+                    <TextIcon className="mr-2"/> Insert Text
+                </Button>
                 <div className="flex-grow"/>
                 <Button size="sm" onClick={handleSave} disabled={isProcessing || pages.length === 0}>
                     {isProcessing ? <Loader2 className="mr-2 animate-spin"/> : <Save className="mr-2"/>}
@@ -469,19 +511,7 @@ export function PdfEditor() {
                             key={page.uniqueId} 
                             page={page} 
                             isSelected={selectedPageId === page.uniqueId}
-                            onClick={() => {
-                                const oldId = selectedPageId;
-                                const newId = page.uniqueId;
-                                // Save state of old page
-                                if (fabricCanvasRef.current && oldId) {
-                                    const oldPageData = pages.find(p => p.uniqueId === oldId);
-                                    if (oldPageData) {
-                                        const json = fabricCanvasRef.current.toObject();
-                                        sessionStorage.setItem(oldPageData.uniqueId, JSON.stringify(json));
-                                    }
-                                }
-                                setSelectedPageId(newId);
-                            }}
+                            onClick={() => handlePageSelect(page.uniqueId)}
                            />
                         ))}
                       </div>

@@ -16,7 +16,8 @@ import {
   FileArchive,
   ScanLine,
   Combine,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Type as TextIcon
 } from "lucide-react";
 import Link from 'next/link';
 
