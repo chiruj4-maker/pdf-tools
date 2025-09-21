@@ -1,24 +1,75 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileDropzone } from '@/components/ui/file-dropzone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTaskHistory } from '@/hooks/use-task-history';
 import { useToast } from '@/hooks/use-toast';
-import { File, X, Check, Scaling, Loader2, Download } from 'lucide-react';
+import { File, X, Check, Scaling, Loader2, Download, Lock, LockOpen } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { downloadFile } from '@/lib/file-utils';
+import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+type ResizeMode = 'pixels' | 'percentage';
 
 export function ImageResizer() {
   const [file, setFile] = useState<File | null>(null);
+  const [originalDimensions, setOriginalDimensions] = useState<{width: number, height: number} | null>(null);
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
+  const [percentage, setPercentage] = useState('50');
   const [isResizing, setIsResizing] = useState(false);
   const [resizedImage, setResizedImage] = useState<Blob | null>(null);
   const [originalFileName, setOriginalFileName] = useState('');
+  const [lockAspectRatio, setLockAspectRatio] = useState(true);
+  const [resizeMode, setResizeMode] = useState<ResizeMode>('pixels');
+
   const { addTask } = useTaskHistory();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (file) {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                setOriginalDimensions({ width: img.width, height: img.height });
+                setWidth(String(img.width));
+                setHeight(String(img.height));
+            };
+        };
+    }
+  }, [file]);
+
+
+  const handleDimensionChange = (value: string, dimension: 'width' | 'height') => {
+    if (!lockAspectRatio || !originalDimensions) {
+        if (dimension === 'width') setWidth(value);
+        else setHeight(value);
+        return;
+    }
+
+    const numericValue = parseInt(value, 10);
+    if (isNaN(numericValue) || numericValue <= 0) {
+        if (dimension === 'width') setWidth('');
+        else setHeight('');
+        return;
+    }
+
+    const aspectRatio = originalDimensions.width / originalDimensions.height;
+    if (dimension === 'width') {
+        setWidth(value);
+        setHeight(String(Math.round(numericValue / aspectRatio)));
+    } else {
+        setHeight(value);
+        setWidth(String(Math.round(numericValue * aspectRatio)));
+    }
+  }
+
 
   const handleFileAdded = (files: File[]) => {
     const selectedFile = files[0] || null;
@@ -28,14 +79,36 @@ export function ImageResizer() {
   };
 
   const handleResize = async () => {
-    if (!file) {
+    if (!file || !originalDimensions) {
       toast({ title: "No file selected", description: "Please select an image file to resize.", variant: "destructive" });
       return;
     }
-    if (!width && !height) {
-        toast({ title: "No dimensions specified", description: "Please enter a width or a height.", variant: "destructive" });
-        return;
+    
+    let newWidth: number;
+    let newHeight: number;
+
+    if (resizeMode === 'pixels') {
+        newWidth = parseInt(width, 10);
+        newHeight = parseInt(height, 10);
+        if (isNaN(newWidth) && isNaN(newHeight)) {
+             toast({ title: "No dimensions specified", description: "Please enter a width or a height.", variant: "destructive" });
+             return;
+        }
+        if (isNaN(newWidth)) {
+            newWidth = (originalDimensions.width / originalDimensions.height) * newHeight;
+        } else if (isNaN(newHeight)) {
+            newHeight = (originalDimensions.height / originalDimensions.width) * newWidth;
+        }
+    } else { // Percentage
+        const scale = parseInt(percentage, 10);
+        if (isNaN(scale) || scale <= 0) {
+            toast({ title: "Invalid Percentage", description: "Please enter a valid percentage.", variant: "destructive" });
+            return;
+        }
+        newWidth = originalDimensions.width * (scale / 100);
+        newHeight = originalDimensions.height * (scale / 100);
     }
+
 
     setIsResizing(true);
     setResizedImage(null);
@@ -55,15 +128,6 @@ export function ImageResizer() {
                 return;
             }
 
-            let newWidth = parseInt(width, 10);
-            let newHeight = parseInt(height, 10);
-
-            if (!width) {
-                newWidth = (img.width / img.height) * newHeight;
-            } else if (!height) {
-                newHeight = (img.height / img.width) * newWidth;
-            }
-
             canvas.width = newWidth;
             canvas.height = newHeight;
 
@@ -74,7 +138,7 @@ export function ImageResizer() {
                     setResizedImage(blob);
                     addTask({
                         name: 'Image Resizing',
-                        details: `Resized ${file.name} to ${newWidth} x ${newHeight}.`,
+                        details: `Resized ${file.name} to ${Math.round(newWidth)} x ${Math.round(newHeight)}.`,
                         status: 'completed',
                     });
                     toast({
@@ -110,8 +174,12 @@ export function ImageResizer() {
     setFile(null);
     setWidth('');
     setHeight('');
+    setPercentage('50');
     setResizedImage(null);
     setOriginalFileName('');
+    setOriginalDimensions(null);
+    setLockAspectRatio(true);
+    setResizeMode('pixels');
   }
 
   return (
@@ -122,7 +190,7 @@ export function ImageResizer() {
         <Alert variant="default" className="flex items-center justify-between">
             <div className="flex items-center gap-2">
                 <File className="h-5 w-5"/>
-                <AlertDescription>{file.name} ({(file.size / 1024).toFixed(2)} KB)</AlertDescription>
+                <AlertDescription>{file.name} ({(file.size / 1024).toFixed(2)} KB) {originalDimensions && ` - ${originalDimensions.width} x ${originalDimensions.height}px`}</AlertDescription>
             </div>
             <Button variant="ghost" size="icon" onClick={reset}>
                 <X className="h-4 w-4" />
@@ -132,17 +200,45 @@ export function ImageResizer() {
 
       {file && !resizedImage && (
         <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="width">Width (px)</Label>
-                <Input id="width" type="number" placeholder="e.g., 1920" value={width} onChange={(e) => setWidth(e.target.value)} disabled={isResizing} />
+            <div className="space-y-4 p-4 border rounded-lg">
+                <div className="flex items-center space-x-2">
+                    <Switch id="aspect-ratio-lock" checked={lockAspectRatio} onCheckedChange={setLockAspectRatio} />
+                    <Label htmlFor="aspect-ratio-lock" className="flex items-center gap-2 cursor-pointer">
+                        {lockAspectRatio ? <Lock /> : <LockOpen />}
+                        Lock Aspect Ratio
+                    </Label>
                 </div>
-                <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="height">Height (px)</Label>
-                <Input id="height" type="number" placeholder="e.g., 1080" value={height} onChange={(e) => setHeight(e.target.value)} disabled={isResizing} />
-                </div>
+                <RadioGroup defaultValue="pixels" value={resizeMode} onValueChange={(value: string) => setResizeMode(value as ResizeMode)}>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="pixels" id="r-pixels" />
+                      <Label htmlFor="r-pixels">By Pixels</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="percentage" id="r-percentage" />
+                      <Label htmlFor="r-percentage">By Percentage</Label>
+                    </div>
+                  </div>
+                </RadioGroup>
+
+                {resizeMode === 'pixels' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end animate-in fade-in-50 duration-300">
+                      <div className="grid w-full items-center gap-1.5">
+                          <Label htmlFor="width">Width (px)</Label>
+                          <Input id="width" type="number" placeholder="e.g., 1920" value={width} onChange={(e) => handleDimensionChange(e.target.value, 'width')} disabled={isResizing} />
+                      </div>
+                      <div className="grid w-full items-center gap-1.5">
+                          <Label htmlFor="height">Height (px)</Label>
+                          <Input id="height" type="number" placeholder="e.g., 1080" value={height} onChange={(e) => handleDimensionChange(e.target.value, 'height')} disabled={isResizing} />
+                      </div>
+                  </div>
+                ) : (
+                  <div className="grid w-full max-w-xs items-center gap-1.5 animate-in fade-in-50 duration-300">
+                      <Label htmlFor="percentage">Percentage (%)</Label>
+                      <Input id="percentage" type="number" placeholder="e.g., 50" value={percentage} onChange={(e) => setPercentage(e.target.value)} disabled={isResizing} />
+                  </div>
+                )}
             </div>
-            <p className="text-sm text-muted-foreground">Leave a dimension blank to auto-scale and maintain aspect ratio.</p>
 
 
             <div className="flex justify-end">
