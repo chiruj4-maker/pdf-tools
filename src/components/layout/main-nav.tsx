@@ -12,7 +12,8 @@ import {
   QrCode,
   FilePlus,
   History,
-  LayoutDashboard
+  LayoutDashboard,
+  FileArchive
 } from "lucide-react";
 import Link from 'next/link';
 
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/image-resizer', label: 'Image Resizer', icon: Scaling },
   { href: '/qr-code-generator', label: 'QR Code Generator', icon: QrCode },
   { href: '/image-to-pdf', label: 'Image to PDF', icon: FilePlus },
+  { href: '/pdf-compressor', label: 'PDF Compressor', icon: FileArchive },
   { href: '/history', label: 'Task History', icon: History },
 ];
 

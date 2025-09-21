@@ -9,14 +9,12 @@ type FileToZip = {
  * Triggers a browser download for a given Blob.
  * @param blob The Blob to download.
  * @param fileName The desired name for the downloaded file.
- * @param extension The file extension.
  */
-export function downloadFile(blob: Blob, fileName: string, extension?: string) {
-    const finalFileName = extension ? `${fileName.split('.').slice(0, -1).join('.')}.${extension}` : fileName;
+export function downloadFile(blob: Blob, fileName: string) {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = finalFileName;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

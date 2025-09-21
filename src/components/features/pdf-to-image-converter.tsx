@@ -1,15 +1,17 @@
 'use client';
 import { useState } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
 import { FileDropzone } from '@/components/ui/file-dropzone';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTaskHistory } from '@/hooks/use-task-history';
 import { useToast } from '@/hooks/use-toast';
 import { File, X, Check, FileImage, Loader2, Download, Archive } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
-import { PDFDocument } from 'pdf-lib';
 import { downloadFile, createZip } from '@/lib/file-utils';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 type OutputImage = {
   name: string;
@@ -39,31 +41,31 @@ export function PdfToImageConverter() {
     setOutputImages([]);
 
     try {
-      const pdfBytes = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(pdfBytes);
-      const numPages = pdfDoc.getPageCount();
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+      const numPages = pdf.numPages;
       const images: OutputImage[] = [];
 
-      // This is a simplified conversion. For real-world use, you'd likely
-      // render each page to a canvas and then convert to an image.
-      // pdf-lib does not directly support rendering pages to images.
-      // We will simulate it by showing a message and then enabling download.
-      // For this example, we will just create placeholder blobs.
-      
-      for(let i = 0; i < numPages; i++) {
-        // Since we can't render pages, we create dummy blobs.
-        // A real implementation would use a library like pdf.js to render.
-        const placeholderBlob = new Blob([`Page ${i+1} of ${file.name}`], { type: 'text/plain' });
-        images.push({
-            name: `${file.name.replace('.pdf', '')}-page-${i + 1}.${imageFormat === 'jpeg' ? 'jpg' : 'png'}`,
-            blob: placeholderBlob,
-        })
-      }
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 }); // Increase scale for better quality
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
 
-      // This part is a placeholder for a real conversion process.
-      // A library like pdf.js would be needed on the client-side to render pages.
-      // As it is a heavy dependency, we will just simulate the result.
-      await new Promise(resolve => setTimeout(resolve, 1500));
+        await page.render({ canvasContext: context!, viewport: viewport }).promise;
+
+        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, `image/${imageFormat}`));
+
+        if (blob) {
+            images.push({
+                name: `${file.name.replace('.pdf', '')}-page-${i}.${imageFormat === 'jpeg' ? 'jpg' : 'png'}`,
+                blob: blob,
+            });
+        }
+      }
 
       setOutputImages(images);
 
@@ -89,7 +91,7 @@ export function PdfToImageConverter() {
   const handleDownloadAll = async () => {
     if(outputImages.length > 0) {
         const zipBlob = await createZip(outputImages);
-        downloadFile(zipBlob, `${file?.name.replace('.pdf','') || 'images'}.zip`, 'application/zip');
+        downloadFile(zipBlob, `${file?.name.replace('.pdf','') || 'images'}.zip`);
     }
   }
 
@@ -133,10 +135,6 @@ export function PdfToImageConverter() {
                     {isConverting ? 'Converting...' : 'Convert to Image'}
                 </Button>
             </div>
-            <Alert variant="default">
-                <AlertTitle>Note</AlertTitle>
-                <AlertDescription>This tool simulates the conversion of PDF pages to images. A full implementation requires a library like PDF.js for rendering, which is not included in this demo.</AlertDescription>
-            </Alert>
         </>
       )}
 
