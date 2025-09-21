@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { SmartTaskSuggester } from "@/components/features/smart-task-suggester";
 import Link from "next/link";
-import { FileImage, Scaling, QrCode, FilePlus, ArrowRight, FileArchive } from "lucide-react";
+import { FileImage, Scaling, QrCode, FilePlus, ArrowRight, FileArchive, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const tools = [
@@ -34,6 +34,12 @@ const tools = [
     href: "/pdf-compressor",
     icon: FileArchive,
     description: "Reduce the file size of your PDF documents."
+  },
+  {
+    title: "PDF Editor",
+    href: "/pdf-editor",
+    icon: ScanLine,
+    description: "Edit, rotate, and delete pages in a PDF."
   }
 ];
 

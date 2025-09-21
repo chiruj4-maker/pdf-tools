@@ -13,7 +13,8 @@ import {
   FilePlus,
   History,
   LayoutDashboard,
-  FileArchive
+  FileArchive,
+  ScanLine
 } from "lucide-react";
 import Link from 'next/link';
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/qr-code-generator', label: 'QR Code Generator', icon: QrCode },
   { href: '/image-to-pdf', label: 'Image to PDF', icon: FilePlus },
   { href: '/pdf-compressor', label: 'PDF Compressor', icon: FileArchive },
+  { href: '/pdf-editor', label: 'PDF Editor', icon: ScanLine },
   { href: '/history', label: 'Task History', icon: History },
 ];
 
