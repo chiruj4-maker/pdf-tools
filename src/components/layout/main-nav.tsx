@@ -15,7 +15,8 @@ import {
   LayoutDashboard,
   FileArchive,
   ScanLine,
-  Combine
+  Combine,
+  Image as ImageIcon
 } from "lucide-react";
 import Link from 'next/link';
 
