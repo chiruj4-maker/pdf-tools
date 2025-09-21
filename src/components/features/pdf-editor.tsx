@@ -2,7 +2,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument, degrees, PDFImage, rgb } from 'pdf-lib';
-import { fabric } from 'fabric';
+import type { fabric } from 'fabric';
 
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -54,6 +54,9 @@ export function PdfEditor() {
   // Fabric.js state
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
+  const fabricRef = useRef<typeof fabric | null>(null);
+  const [isFabricReady, setIsFabricReady] = useState(false);
+
   const [zoom, setZoom] = useState(1);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -73,9 +76,16 @@ export function PdfEditor() {
       return pages.findIndex(p => p.uniqueId === selectedPageId);
   }, [pages, selectedPageId]);
 
+  useEffect(() => {
+    import('fabric').then(fabricModule => {
+        fabricRef.current = fabricModule.fabric;
+        setIsFabricReady(true);
+    });
+  }, []);
+
   const initFabricCanvas = useCallback(() => {
-    if (canvasRef.current) {
-        fabricCanvasRef.current = new fabric.Canvas(canvasRef.current);
+    if (canvasRef.current && fabricRef.current) {
+        fabricCanvasRef.current = new fabricRef.current.Canvas(canvasRef.current);
     }
     return () => {
         fabricCanvasRef.current?.dispose();
@@ -83,12 +93,17 @@ export function PdfEditor() {
     }
   }, []);
 
-  useEffect(initFabricCanvas, [initFabricCanvas]);
+  useEffect(() => {
+    if(isFabricReady) {
+        initFabricCanvas();
+    }
+  }, [isFabricReady, initFabricCanvas]);
 
   const drawCanvas = useCallback(async () => {
-    if (!pdfDocProxy || selectedPageIndex === -1 || !fabricCanvasRef.current) return;
+    if (!pdfDocProxy || selectedPageIndex === -1 || !fabricCanvasRef.current || !fabricRef.current) return;
     
     const canvas = fabricCanvasRef.current;
+    const fabric = fabricRef.current;
     canvas.clear();
 
     const pageData = pages[selectedPageIndex];
@@ -240,7 +255,8 @@ export function PdfEditor() {
 
   const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       const imageFile = e.target.files?.[0];
-      if (imageFile && fabricCanvasRef.current) {
+      if (imageFile && fabricCanvasRef.current && fabricRef.current) {
+          const fabric = fabricRef.current;
           const reader = new FileReader();
           reader.onload = (event) => {
               if(event.target?.result) {
@@ -264,8 +280,9 @@ export function PdfEditor() {
   }
 
   const handleSave = async () => {
-    if (!file || !pdfDocProxy) return;
+    if (!file || !pdfDocProxy || !fabricRef.current) return;
 
+    const fabric = fabricRef.current;
     setIsProcessing(true);
     try {
         const originalPdfBytes = await file.arrayBuffer();
@@ -425,7 +442,7 @@ export function PdfEditor() {
                 <Button size="sm" onClick={handleInsertPage} disabled={isProcessing}>
                     <FilePlus className="mr-2"/> Insert Blank Page
                 </Button>
-                 <Button size="sm" onClick={handleAddImageClick} disabled={isProcessing || !selectedPageId}>
+                 <Button size="sm" onClick={handleAddImageClick} disabled={isProcessing || !selectedPageId || !isFabricReady}>
                     <ImageIcon className="mr-2"/> Insert Image
                 </Button>
                 <div className="flex-grow"/>
