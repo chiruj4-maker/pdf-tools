@@ -4,4 +4,12 @@
 runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
-  maxInstances: 1
+  maxInstances: 5
+  minInstances: 1
+
+# Pass secrets from Cloud Secret Manager to the App Hosting backend as environment variables.
+# The backend IAM service account must be granted the "Secret Manager Secret Accessor" role.
+# https://firebase.google.com/docs/app-hosting/configure#secrets
+# secrets:
+#   - secret: COMPRESSOR_URL
+#   - secret: COMPRESSOR_API_KEY
