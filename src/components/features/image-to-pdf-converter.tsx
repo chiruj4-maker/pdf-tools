@@ -4,10 +4,44 @@ import { FileDropzone } from '@/components/ui/file-dropzone';
 import { Button } from '@/components/ui/button';
 import { useTaskHistory } from '@/hooks/use-task-history';
 import { useToast } from '@/hooks/use-toast';
-import { File, X, Check, FilePlus, Loader2, Download } from 'lucide-react';
+import { File, X, Check, FilePlus, Loader2, Download, GripVertical } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PDFDocument } from 'pdf-lib';
 import { downloadFile } from '@/lib/file-utils';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+interface SortableFileItemProps {
+  file: File;
+  onRemove: () => void;
+  isConverting: boolean;
+}
+
+function SortableFileItem({ file, onRemove, isConverting }: SortableFileItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: file.name });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} >
+       <Alert variant="default" className="flex items-center justify-between">
+          <div className="flex items-center gap-2 overflow-hidden">
+              <button {...attributes} {...listeners} className="cursor-grab touch-none p-1"><GripVertical className="h-5 w-5 text-muted-foreground"/></button>
+              <File className="h-5 w-5 flex-shrink-0"/>
+              <AlertDescription className="truncate">{file.name} ({(file.size / 1024).toFixed(2)} KB)</AlertDescription>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onRemove} disabled={isConverting}>
+              <X className="h-4 w-4" />
+          </Button>
+      </Alert>
+    </div>
+  );
+}
+
 
 export function ImageToPdfConverter() {
   const [files, setFiles] = useState<File[]>([]);
@@ -16,10 +50,16 @@ export function ImageToPdfConverter() {
   const { addTask } = useTaskHistory();
   const { toast } = useToast();
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const handleFilesAdded = (newFiles: File[]) => {
     setFiles(prevFiles => {
       const allFiles = [...prevFiles, ...newFiles];
-      // Remove duplicates
       const uniqueFiles = allFiles.filter((file, index, self) =>
         index === self.findIndex((f) => f.name === file.name && f.size === file.size)
       );
@@ -28,9 +68,21 @@ export function ImageToPdfConverter() {
     setPdfBytes(null);
   };
 
-  const removeFile = (index: number) => {
-    setFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+  const removeFile = (fileName: string) => {
+    setFiles(prevFiles => prevFiles.filter((file) => file.name !== fileName));
   };
+  
+  const handleDragEnd = (event: DragEndEvent) => {
+    const {active, over} = event;
+    if (over && active.id !== over.id) {
+      setFiles((items) => {
+        const oldIndex = items.findIndex(item => item.name === active.id);
+        const newIndex = items.findIndex(item => item.name === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  }
+
 
   const handleConvert = async () => {
     if (files.length === 0) {
@@ -104,29 +156,26 @@ export function ImageToPdfConverter() {
       {!pdfBytes && <FileDropzone onFilesAdded={handleFilesAdded} accept={{ 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'] }} multiple={true} />}
 
       {files.length > 0 && !pdfBytes && (
-        <div className="space-y-2">
-            <h3 className="font-semibold">Selected Files ({files.length}):</h3>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                {files.map((file, index) => (
-                     <Alert key={index} variant="default" className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                            <File className="h-5 w-5 flex-shrink-0"/>
-                            <AlertDescription className="truncate">{file.name} ({(file.size / 1024).toFixed(2)} KB)</AlertDescription>
-                        </div>
-                        <Button variant="ghost" size="icon" onClick={() => removeFile(index)} disabled={isConverting}>
-                            <X className="h-4 w-4" />
-                        </Button>
-                    </Alert>
-                ))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <div className="space-y-2">
+                <h3 className="font-semibold">Selected Files ({files.length}):</h3>
+                 <p className="text-sm text-muted-foreground">Drag and drop to reorder the images before converting.</p>
+                <SortableContext items={files.map(f => f.name)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                        {files.map((file) => (
+                           <SortableFileItem key={file.name} file={file} onRemove={() => removeFile(file.name)} isConverting={isConverting} />
+                        ))}
+                    </div>
+                </SortableContext>
             </div>
-        </div>
+        </DndContext>
       )}
 
       {files.length > 0 && !pdfBytes && (
         <div className="flex justify-end">
             <Button onClick={handleConvert} disabled={isConverting}>
                 {isConverting ? <Loader2 className="mr-2 animate-spin" /> : <FilePlus className="mr-2"/>}
-                {isConverting ? `Converting (${files.length} files)...` : 'Create PDF'}
+                {isConverting ? `Converting (${files.length} files)...` : `Create PDF from ${files.length} Image(s)`}
             </Button>
         </div>
       )}
