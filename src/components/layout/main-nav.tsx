@@ -14,7 +14,8 @@ import {
   History,
   LayoutDashboard,
   FileArchive,
-  ScanLine
+  ScanLine,
+  Combine
 } from "lucide-react";
 import Link from 'next/link';
 
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/image-to-pdf', label: 'Image to PDF', icon: FilePlus },
   { href: '/pdf-compressor', label: 'PDF Compressor', icon: FileArchive },
   { href: '/pdf-editor', label: 'PDF Editor', icon: ScanLine },
+  { href: '/pdf-merger', label: 'PDF Merger', icon: Combine },
   { href: '/history', label: 'Task History', icon: History },
 ];
 
